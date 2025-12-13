@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>DWD MOSMIX – Kompakt</title>
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  margin: 12px;
+  font-size: 12px;
+}
+.controls {
+  margin-bottom: 6px;
+}
+#dayHeader {
+  display: flex;
+  font-weight: bold;
+  margin-bottom: 4px;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+#stationName {
+  font-weight:bold;
+  margin-bottom:6px;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.panel {
+  margin-bottom: 6px;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.panel-title {
+  font-size: 11px;
+  margin-bottom: 1px;
+}
+.chart-wrap {
+  width: 100%;
+  height: 85px;
+}
+.chart-wrap.small {
+  height: 65px;
+}
+canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+#cRH { height: 70px; }
+#cSun, #cRain { height: 60px; }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <select id="stationSelector">
+    <option value="">Station wählen …</option>
+  </select>
+  <button onclick="loadStation()">Laden</button>
+</div>
+
+<div id="stationName"></div>
+
+<div id="dayHeader"></div>
+
+<div class="panel">
+  <div class="panel-title">Temperatur °C</div>
+  <div class="chart-wrap">
+    <canvas id="cTemp"></canvas>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-title">Wind / Böen km/h</div>
+  <div class="chart-wrap small">
+    <canvas id="cWind"></canvas>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-title">Relative Luftfeuchte %</div>
+  <div class="chart-wrap small">
+    <canvas id="cRH"></canvas>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-title">Sonnenscheindauer min/h</div>
+  <div class="chart-wrap small">
+    <canvas id="cSun"></canvas>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-title">Niederschlag mm</div>
+  <div class="chart-wrap small">
+    <canvas id="cRain"></canvas>
+  </div>
+</div>
+
+<script>
+/* ===============================
+   CORS Proxy
+   =============================== */
+const CORS = u => "https://corsproxy.io/?" + u;
+
+function dwdUrl(id) {
+  return "https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/" +
+         "single_stations/" + id +
+         "/kml/MOSMIX_L_LATEST_" + id + ".kmz";
+}
+
+/* ===============================
+   XML Helper
+   =============================== */
+const byLocal = (xml, n) =>
+  [...xml.getElementsByTagName("*")].filter(e => e.localName === n);
+
+/* ===============================
+   Load
+   =============================== */
+async function loadStation() {
+  const sel = document.getElementById("stationSelector");
+  const id = sel.value;
+  if (!id) return;
+
+  // URL‑Parameter setzen
+  const params = new URLSearchParams(window.location.search);
+  params.set("station", id);
+  history.replaceState(null, "", "?" + params.toString());
+
+  const resp = await fetch(CORS(dwdUrl(id)));
+  const zip = await JSZip.loadAsync(await resp.arrayBuffer());
+  const kml = await zip.file(/\.kml$/i)[0].async("text");
+
+  renderAll(parseKML(kml));
+
+  // Stationsname extrahieren
+  const xml = new DOMParser().parseFromString(kml, "text/xml");
+  const nameEl = xml.getElementsByTagNameNS("*", "description")[0];
+  const stationName = nameEl ? nameEl.textContent : "Station " + id;
+
+  document.getElementById("stationName").textContent = "Station: " + stationName;
+}
+
+async function loadStationList() {
+  const url = "https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_stationskatalog.cfg?view=nasPublication&nn=16102";
+  const resp = await fetch(CORS(url));
+  const text = await resp.text();
+
+  const sel = document.getElementById("stationSelector");
+  text.split("\n").forEach(line => {
+    const cols = line.trim().split(/\s+/, 3);
+    if (cols.length > 2) {
+      const id = cols[0];
+      const name = cols[2];
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = `${name} (${id})`;
+      sel.appendChild(opt);
+    }
+  });
+
+  // Setze Wert aus URL‑Parameter, wenn vorhanden
+  const params = new URLSearchParams(window.location.search);
+  const preset = params.get("station");
+  if (preset) {
+    sel.value = preset;
+    loadStation(); // automatisch laden
+  }
+}
+
+loadStationList();
+
+
+/* ===============================
+   Parse + Tagesstart 00:00
+   =============================== */
+function parseKML(text) {
+  const xml = new DOMParser().parseFromString(text, "text/xml");
+
+  // vorhandene Times
+  let timesRaw = byLocal(xml, "TimeStep").map(n => new Date(n.textContent));
+
+  // Forecast-Daten
+  const raw = {};
+  byLocal(xml, "Forecast").forEach(f => {
+    const n = f.getAttribute("dwd:elementName") || f.getAttribute("elementName");
+    const v = [...f.children].find(c => c.localName === "value");
+    if (n && v)
+      raw[n] = v.textContent.trim().split(/\s+/).map(x => x === "-" ? null : +x);
+  });
+
+  // Heute 00:00 bis 4 Tage später, stündlich
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(start);
+  end.setDate(end.getDate() + 4);
+
+  const times = [];
+  for (let t = new Date(start); t < end; t.setHours(t.getHours() + 1)) {
+    times.push(new Date(t));
+  }
+
+  const sel = arr => times.map(t => {
+    const idx = timesRaw.findIndex(tr => tr.getTime() === t.getTime());
+    return idx >= 0 ? arr[idx] : null;
+  });
+
+  const temp = sel(raw.TTT).map(v => v==null?null:v-273.15);
+  const dew  = sel(raw.Td).map(v => v==null?null:v-273.15);
+  const sun  = sel(raw.SunD1).map(v => v==null?null:v/60);
+
+  const rh = temp.map((t,i)=>{
+    const d=dew[i];
+    if(t==null||d==null)return null;
+    const a=17.62,b=243.12;
+    return Math.max(0,Math.min(100,
+      100*Math.exp(a*d/(b+d))/Math.exp(a*t/(b+t))
+    ));
+  });
+
+  return {
+    times,
+    temp,
+    wind: sel(raw.FF),
+    gust: sel(raw.FX1),
+    rh,
+    sun,
+    rain: sel(raw.RR1c)
+  };
+}
+
+/* ===============================
+   Grid
+   =============================== */
+function gridInfo(times){
+  const days=[],hours=[];
+  times.forEach((t,i)=>{
+    if(t.getHours()===0) days.push({i,t});
+    if([1,7,13,19].includes(t.getHours())) hours.push({i});
+  });
+  return {days,hours};
+}
+
+const gridPlugin={
+  id:"grid",
+  afterDraw(c,a,o){
+    const {ctx,chartArea:{top,bottom},scales:{x}}=c;
+    ctx.save();
+    o.hours.forEach(h=>{
+      const px=x.getPixelForValue(h.i);
+      ctx.strokeStyle="#ccc";
+      ctx.lineWidth=0.4;
+      ctx.beginPath();ctx.moveTo(px,top);ctx.lineTo(px,bottom);ctx.stroke();
+    });
+    o.days.forEach(d=>{
+      const px=x.getPixelForValue(d.i);
+      ctx.strokeStyle="#000";
+      ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(px,top);ctx.lineTo(px,bottom);ctx.stroke();
+    });
+    ctx.restore();
+  }
+};
+
+/* ===============================
+   Render
+   =============================== */
+let charts=[];
+function renderAll(d){
+  charts.forEach(c=>c.destroy()); charts=[];
+  const labels=d.times.map((_,i)=>i);
+  const grid=gridInfo(d.times);
+  renderHeader(d.times,grid.days);
+
+  charts.push(line("cTemp",labels,d.temp,"black",grid));
+  charts.push(line("cWind",labels,d.wind,"olive",grid,d.gust));
+  charts.push(line("cRH",labels,d.rh,"teal",grid));
+  charts.push(bar("cSun",labels,d.sun,"gold",grid));
+  charts.push(bar("cRain",labels,d.rain,"blue",grid));
+}
+
+function renderHeader(times,days){
+  const el=document.getElementById("dayHeader");
+  el.innerHTML="";
+  days.forEach((d,i)=>{
+    const div=document.createElement("div");
+    div.style.flex=( (i+1<days.length?days[i+1].i:times.length) - d.i );
+    div.style.textAlign="center";
+    div.textContent=d.t.toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"});
+    el.appendChild(div);
+  });
+}
+
+/* ===============================
+   Charts
+   =============================== */
+function opts(grid){
+  return{
+    responsive:true,
+    maintainAspectRatio:false,
+    plugins:{legend:{display:false},grid:{days:grid.days,hours:grid.hours}},
+    scales:{x:{display:false}}
+  };
+}
+
+function line(id,l,data,color,grid,extra){
+  return new Chart(document.getElementById(id),{
+    type:"line",plugins:[gridPlugin],
+    data:{labels:l,datasets:[
+      {data,borderColor:color,pointRadius:0,tension:.3},
+      ...(extra?[{data:extra,borderColor:"magenta",borderDash:[4,3],pointRadius:0}]:[])
+    ]},
+    options:opts(grid)
+  });
+}
+
+function bar(id,l,data,color,grid){
+  return new Chart(document.getElementById(id),{
+    type:"bar",plugins:[gridPlugin],
+    data:{labels:l,datasets:[{data,backgroundColor:color,barPercentage:.8}]},
+    options:opts(grid)
+  });
+}
+</script>
+
+</body>
+</html>
