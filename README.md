@@ -14,7 +14,7 @@ Nach auswahl der Station wird die ID an die URL angehängt, damit kann diese auc
 
 So sieht derzeit die App aus:
 
-<img width="630" height="516" alt="grafik" src="https://github.com/user-attachments/assets/91dc2c83-1b3f-4743-94b1-ea23b4b5bf12" />
+<img width="845" height="524" alt="grafik" src="https://github.com/user-attachments/assets/6e081e92-8242-4b7d-9456-6d9d08e9cfe3" />
 
 
 ## Informationen
