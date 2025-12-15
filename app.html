@@ -20,20 +20,20 @@ body {
   display: flex;
   font-weight: bold;
   margin-bottom: 4px;
-  max-width: 600px;
+  max-width: 800px;
   margin-left: auto;
   margin-right: auto;
 }
 #stationName {
   font-weight:bold;
   margin-bottom:6px;
-  max-width: 600px;
+  max-width: 800px;
   margin-left: auto;
   margin-right: auto;
 }
 .panel {
   margin-bottom: 6px;
-  max-width: 600px;
+  max-width: 800px;
   margin-left: auto;
   margin-right: auto;
 }
@@ -52,17 +52,16 @@ canvas {
   width: 100% !important;
   height: 100% !important;
 }
-#cRH { height: 70px; }
-#cSun, #cRain { height: 60px; }
+
 </style>
 </head>
 <body>
 
 <div class="controls">
-  <select id="stationSelector">
+  <input id="stationSearch" type="text" placeholder="Stationen filtern …" style="width:150px; margin-bottom:4px;">
+  <select id="stationSelector" onchange="loadStation()">
     <option value="">Station wählen …</option>
   </select>
-  <button onclick="loadStation()">Laden</button>
 </div>
 
 <div id="stationName"></div>
@@ -109,6 +108,7 @@ canvas {
    CORS Proxy
    =============================== */
 const CORS = u => "https://corsproxy.io/?" + u;
+let allStations = [];
 
 function dwdUrl(id) {
   return "https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/" +
@@ -155,26 +155,59 @@ async function loadStationList() {
   const text = await resp.text();
 
   const sel = document.getElementById("stationSelector");
+
+  const stations = [];
+
   text.split("\n").forEach(line => {
     const cols = line.trim().split(/\s+/, 3);
     if (cols.length > 2) {
-      const id = cols[0];
-      const name = cols[2];
-      const opt = document.createElement("option");
-      opt.value = id;
-      opt.textContent = `${name} (${id})`;
-      sel.appendChild(opt);
+      stations.push({
+        id: cols[0],
+        name: cols[2]
+      });
     }
   });
 
-  // Setze Wert aus URL‑Parameter, wenn vorhanden
+  // alphabetisch nach Stationsname sortieren
+  stations.sort((a, b) =>
+    a.name.localeCompare(b.name, "de", { sensitivity: "base" })
+  );
+
+  allStations = stations;   // nach dem Sortieren
+  renderStationOptions(allStations);
+
+  // URL-Parameter auslesen
   const params = new URLSearchParams(window.location.search);
   const preset = params.get("station");
   if (preset) {
     sel.value = preset;
-    loadStation(); // automatisch laden
+    loadStation();
   }
 }
+
+function renderStationOptions(list) {
+  const sel = document.getElementById("stationSelector");
+  sel.innerHTML = '<option value="">Station wählen …</option>';
+
+  list.forEach(s => {
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = `${s.name} (${s.id})`;
+    sel.appendChild(opt);
+  });
+}
+
+document.getElementById("stationSearch").addEventListener("input", e => {
+  const q = e.target.value.trim().toLowerCase();
+
+  const filtered = allStations.filter(s =>
+    s.name.toLowerCase().includes(q) ||
+    s.id.includes(q)
+  );
+
+  renderStationOptions(filtered);
+});
+
 
 loadStationList();
 
