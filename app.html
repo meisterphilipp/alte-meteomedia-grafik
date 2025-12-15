@@ -77,10 +77,12 @@ canvas {
 
 <div class="panel">
   <div class="panel-title">Wind / Böen km/h</div>
-  <div class="chart-wrap small">
+  <div class="chart-wrap small" style="position: relative;">
     <canvas id="cWind"></canvas>
+    <canvas id="cWindArrow" style="position:absolute; left:0; top:0; pointer-events:none;"></canvas>
   </div>
 </div>
+
 
 <div class="panel">
   <div class="panel-title">Relative Luftfeuchte %</div>
@@ -208,6 +210,46 @@ document.getElementById("stationSearch").addEventListener("input", e => {
   renderStationOptions(filtered);
 });
 
+function drawWindArrows(cId, windDir, times) {
+  const canvas = document.getElementById(cId);
+  const ctx = canvas.getContext("2d");
+
+  // Größe anpassen, passend zum Chart
+  const chartCanvas = document.getElementById("cWind");
+  canvas.width = chartCanvas.width;
+  canvas.height = chartCanvas.height;
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  const arrowLength = Math.min(20, canvas.height * 0.6); // max 20px, max 60% Höhe
+
+  const step = times.length > 48 ? Math.floor(times.length / 48) : 1;
+
+  windDir.forEach((deg,i)=>{
+    if(deg==null || i % step !== 0) return;
+
+    const px = (i/(times.length-1))*canvas.width;
+    const py = canvas.height-20;
+
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate((deg-180)*Math.PI/180);
+    ctx.beginPath();
+    ctx.moveTo(0, -arrowLength/2);
+    ctx.lineTo(arrowLength/2, arrowLength/2);
+    ctx.lineTo(0, arrowLength/4);
+    ctx.lineTo(-arrowLength/2, arrowLength/2);
+    ctx.closePath();
+    ctx.fillStyle = "black";
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function gridX(times, canvasWidth) {
+  return i => (i / (times.length-1)) * canvasWidth;
+}
+
 
 loadStationList();
 
@@ -249,7 +291,9 @@ function parseKML(text) {
   const temp = sel(raw.TTT).map(v => v==null?null:v-273.15);
   const dew  = sel(raw.Td).map(v => v==null?null:v-273.15);
   const sun  = sel(raw.SunD1).map(v => v==null?null:v/60);
+  const windDir = sel(raw.DD);
 
+  // Relative Luftfeuchte
   const rh = temp.map((t,i)=>{
     const d=dew[i];
     if(t==null||d==null)return null;
@@ -259,6 +303,11 @@ function parseKML(text) {
     ));
   });
 
+  // Windrichtung
+  const arrowsPerDay = 12; // 24h / 2h = 12
+  const step = Math.floor(times.length / (4*arrowsPerDay)); // 4 Tage
+  const windDirSampled = times.map((_, i) => (i % step === 0 ? windDir[i] : null));
+
   return {
     times,
     temp,
@@ -266,7 +315,8 @@ function parseKML(text) {
     gust: sel(raw.FX1),
     rh,
     sun,
-    rain: sel(raw.RR1c)
+    rain: sel(raw.RR1c),
+    windDirSampled
   };
 }
 
@@ -318,6 +368,7 @@ function renderAll(d){
   charts.push(line("cRH",labels,d.rh,"teal",grid));
   charts.push(bar("cSun",labels,d.sun,"gold",grid));
   charts.push(bar("cRain",labels,d.rain,"blue",grid));
+  drawWindArrows("cWindArrow", d.windDirSampled, d.times);
 }
 
 function renderHeader(times,days){
