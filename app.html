@@ -93,14 +93,14 @@ canvas {
 
 <div class="panel">
   <div class="panel-title">Sonnenscheindauer min/h</div>
-  <div class="chart-wrap small">
+  <div class="chart-wrap">
     <canvas id="cSun"></canvas>
   </div>
 </div>
 
 <div class="panel">
   <div class="panel-title">Niederschlag mm</div>
-  <div class="chart-wrap small">
+  <div class="chart-wrap">
     <canvas id="cRain"></canvas>
   </div>
 </div>
@@ -327,7 +327,7 @@ function gridInfo(times){
   const days=[],hours=[];
   times.forEach((t,i)=>{
     if(t.getHours()===0) days.push({i,t});
-    if([1,7,13,19].includes(t.getHours())) hours.push({i});
+    if([0,6,12,18].includes(t.getHours())) hours.push({i});
   });
   return {days,hours};
 }
@@ -363,11 +363,30 @@ function renderAll(d){
   const grid=gridInfo(d.times);
   renderHeader(d.times,grid.days);
 
-  charts.push(line("cTemp",labels,d.temp,"black",grid));
+  const tMin = Math.min(...d.temp.filter(v => v != null));
+  const tempScale = {beginAtZero: false};
+  if (tMin < 5 && tMin >= 0) {tempScale.min = 0;}
+
+
+  charts.push(line("cTemp",labels,d.temp,"black",grid,null,[zeroLinePlugin],tempScale));
   charts.push(line("cWind",labels,d.wind,"olive",grid,d.gust));
   charts.push(line("cRH",labels,d.rh,"teal",grid));
-  charts.push(bar("cSun",labels,d.sun,"gold",grid));
-  charts.push(bar("cRain",labels,d.rain,"blue",grid));
+  charts.push(bar("cSun",labels,d.sun,"gold",grid,{beginAtZero: false, max: 60}));
+  charts.push(
+    new Chart(document.getElementById("cRain"), {
+      type: "bar",
+      plugins: [gridPlugin],
+      data: {
+        labels,
+        datasets: [{
+          data: d.rain,
+          backgroundColor: "blue",
+          barPercentage: .8
+        }]
+      },
+      options: opts(grid, null, true, d.times) // ← X-Achse an
+    })
+  );
   drawWindArrows("cWindArrow", d.windDirSampled, d.times);
 }
 
@@ -386,33 +405,79 @@ function renderHeader(times,days){
 /* ===============================
    Charts
    =============================== */
-function opts(grid){
+function opts(grid, yScaleOverride = null, showX = false, times = null) {
   return{
     responsive:true,
     maintainAspectRatio:false,
     plugins:{legend:{display:false},grid:{days:grid.days,hours:grid.hours}},
-    scales:{x:{display:false}}
+    scales: {
+      x: {
+        display: showX,
+        ticks: showX && times ? {
+          autoSkip: false,
+          callback: (value) => hourLabel(times, value),
+          maxRotation: 0,
+          minRotation: 0,
+          font: { size: 10 }
+        } : undefined,
+        grid: { display: false }
+      },
+      ...(yScaleOverride ? { y: yScaleOverride } : {})
+    }
   };
 }
 
-function line(id,l,data,color,grid,extra){
+function hourLabel(times, index) {
+  const h = times[index].getHours();
+  return [0, 6, 12, 18].includes(h)
+    ? h.toString().padStart(2, "0")
+    : "";
+}
+
+function line(id, l, data, color, grid, extra, plugins = [], yScaleOverride = null) {
   return new Chart(document.getElementById(id),{
-    type:"line",plugins:[gridPlugin],
+    type:"line",plugins:[gridPlugin, ...plugins],
     data:{labels:l,datasets:[
       {data,borderColor:color,pointRadius:0,tension:.3},
       ...(extra?[{data:extra,borderColor:"magenta",borderDash:[4,3],pointRadius:0}]:[])
     ]},
-    options:opts(grid)
+    options:opts(grid, yScaleOverride)
   });
 }
 
-function bar(id,l,data,color,grid){
+function bar(id,l,data,color,grid, yScaleOverride = null){
   return new Chart(document.getElementById(id),{
     type:"bar",plugins:[gridPlugin],
-    data:{labels:l,datasets:[{data,backgroundColor:color,barPercentage:.8}]},
-    options:opts(grid)
+    data:{labels:l,datasets:[{data,backgroundColor:color,barPercentage:1}]},
+    options:opts(grid, yScaleOverride)
   });
 }
+
+const zeroLinePlugin = {
+  id: "zeroLine",
+  afterDraw(chart) {
+    const y = chart.scales.y;
+    if (!y) return;
+
+    // prüfen, ob 0°C im sichtbaren Bereich liegt
+    if (y.min > 0 || y.max < 0) return;
+
+    const y0 = y.getPixelForValue(0);
+    const { left, right } = chart.chartArea;
+    const ctx = chart.ctx;
+
+    ctx.save();
+    ctx.strokeStyle = "#444";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]); // gestrichelt
+    ctx.beginPath();
+    ctx.moveTo(left, y0);
+    ctx.lineTo(right, y0);
+    ctx.stroke();
+    ctx.restore();
+  }
+};
+
 </script>
 
 </body>
