@@ -221,7 +221,7 @@ function drawWindArrows(cId, windDir, times) {
 
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  const arrowLength = Math.min(20, canvas.height * 0.6); // max 20px, max 60% Höhe
+  const arrowLength = 20;
 
   const step = times.length > 48 ? Math.floor(times.length / 48) : 1;
 
@@ -237,6 +237,11 @@ function drawWindArrows(cId, windDir, times) {
     ctx.beginPath();
     ctx.moveTo(0, -arrowLength/2);
     ctx.lineTo(arrowLength/2, arrowLength/2);
+    ctx.lineTo(0, arrowLength/4);
+    ctx.lineTo(-1, arrowLength/4);
+    ctx.lineTo(-1, arrowLength);
+    ctx.lineTo(2, arrowLength);
+    ctx.lineTo(2, arrowLength/4);
     ctx.lineTo(0, arrowLength/4);
     ctx.lineTo(-arrowLength/2, arrowLength/2);
     ctx.closePath();
@@ -292,6 +297,9 @@ function parseKML(text) {
   const dew  = sel(raw.Td).map(v => v==null?null:v-273.15);
   const sun  = sel(raw.SunD1).map(v => v==null?null:v/60);
   const windDir = sel(raw.DD);
+  const rain = sel(raw.RR1c);
+  const wind = sel(raw.FF).map(v => v==null?null:v * 3.6);
+  const gust = sel(raw.FX1).map(v => v==null?null:v * 3.6);
 
   // Relative Luftfeuchte
   const rh = temp.map((t,i)=>{
@@ -311,11 +319,11 @@ function parseKML(text) {
   return {
     times,
     temp,
-    wind: sel(raw.FF),
-    gust: sel(raw.FX1),
+    wind,
+    gust,
     rh,
     sun,
-    rain: sel(raw.RR1c),
+    rain,
     windDirSampled
   };
 }
@@ -369,7 +377,7 @@ function renderAll(d){
 
 
   charts.push(line("cTemp",labels,d.temp,"black",grid,null,[zeroLinePlugin],tempScale));
-  charts.push(line("cWind",labels,d.wind,"olive",grid,d.gust));
+  charts.push(line("cWind",labels,d.wind,"olive",grid,d.gust,[],{min: 0}));
   charts.push(line("cRH",labels,d.rh,"teal",grid));
   charts.push(bar("cSun",labels,d.sun,"gold",grid,{beginAtZero: false, max: 60}));
   charts.push(
