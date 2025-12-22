@@ -19,7 +19,6 @@ body {
 #dayHeader {
   display: flex;
   font-weight: bold;
-  margin-bottom: 4px;
 }
 #stationName {
   font-weight:bold;
@@ -44,12 +43,17 @@ canvas {
   height: 100% !important;
 }
 #outer {
+  position:fixed;
   width:800px;
-  margin-left: auto;
-  margin-right: auto;
   padding: 10px;
   border: 1px solid grey;
   background-color: #f8f8f8;
+}
+#source {
+  position: absolute;
+  top: 0px;
+  right: 0px;
+  padding: 4px;
 }
 
 </style>
@@ -64,46 +68,47 @@ canvas {
 </div>
 
 <div id="outer">
-<div id="stationName"></div>
+  <div id="stationName"></div>
+  <div id="source">Quelle: <a href="https://opendata.dwd.de/">DWD MOSMIX L</a></div>
 
-<div id="dayHeader"></div>
+  <div id="dayHeader"></div>
 
-<div class="panel">
-  <div class="panel-title">Temperatur °C</div>
-  <div class="chart-wrap">
-    <canvas id="cTemp"></canvas>
+  <div class="panel">
+    <div class="panel-title">Temperatur °C</div>
+    <div class="chart-wrap">
+      <canvas id="cTemp"></canvas>
+    </div>
   </div>
-</div>
 
-<div class="panel">
-  <div class="panel-title">Wind / Böen km/h</div>
-  <div class="chart-wrap" style="position: relative;">
-    <canvas id="cWind"></canvas>
-    <canvas id="cWindArrow" style="position:absolute; left:0; top:0; pointer-events:none;"></canvas>
+  <div class="panel">
+    <div class="panel-title">Wind / Böen km/h</div>
+    <div class="chart-wrap" style="position: relative;">
+      <canvas id="cWind"></canvas>
+      <canvas id="cWindArrow" style="position:absolute; left:0; top:0; pointer-events:none;"></canvas>
+    </div>
   </div>
-</div>
 
 
-<div class="panel">
-  <div class="panel-title">Relative Luftfeuchte %</div>
-  <div class="chart-wrap small">
-    <canvas id="cRH"></canvas>
+  <div class="panel">
+    <div class="panel-title">Relative Luftfeuchte %</div>
+    <div class="chart-wrap small">
+      <canvas id="cRH"></canvas>
+    </div>
   </div>
-</div>
 
-<div class="panel">
-  <div class="panel-title">Sonnenscheindauer min/h</div>
-  <div class="chart-wrap">
-    <canvas id="cSun"></canvas>
+  <div class="panel">
+    <div class="panel-title">Sonnenscheindauer min/h</div>
+    <div class="chart-wrap">
+      <canvas id="cSun"></canvas>
+    </div>
   </div>
-</div>
 
-<div class="panel">
-  <div class="panel-title">Niederschlag mm/h</div>
-  <div class="chart-wrap">
-    <canvas id="cRain"></canvas>
+  <div class="panel">
+    <div class="panel-title">Niederschlag mm/h</div>
+    <div class="chart-wrap">
+      <canvas id="cRain"></canvas>
+    </div>
   </div>
-</div>
 </div>
 <script>
 /* ===============================
