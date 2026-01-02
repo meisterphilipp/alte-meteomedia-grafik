@@ -8,17 +8,55 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
 
 <style>
+:root {
+  --color-bg: #ffffff;
+  --color-text: #111111;
+  --color-text-light: #666666;
+  --color-link: #906fc4;
+  --color-link-hover: #68479d;
+  --color-app-bg: #f8f8f8;
+  --color-app-border: #dddddd;
+  --color-graph-temp: #000;
+  --color-graph-wind: #808000;
+  --color-graph-gust: #ff00ff;
+  --color-graph-winddir: #000;
+  --color-graph-humidity: #008080;
+  --color-graph-sun: #ffd700;
+  --color-graph-rain: #0000ff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0f1115;
+    --color-text: #a9a9a9;
+    --color-text-light: #666666;
+    --color-link: #6d48aa;
+    --color-link-hover: #a487d2;
+    --color-app-bg: #262626;
+    --color-app-border: #828282;
+    --color-graph-temp: #b0b0b0;
+    --color-graph-wind: #808000;
+    --color-graph-gust: #ff00ff;
+    --color-graph-winddir: #777777;
+    --color-graph-humidity: #008080;
+    --color-graph-sun: #c9ab00;
+    --color-graph-rain: #0000c5;
+  }
+}
 body {
   font-family: Arial, sans-serif;
   margin: 12px;
   font-size: 12px;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+a {
+  color: var(--color-link);
+}
+a:hover {
+  color: var(--color-link-hover);
 }
 .controls {
   margin-bottom: 6px;
-}
-#dayHeader {
-  display: flex;
-  font-weight: bold;
 }
 #stationName {
   font-weight:bold;
@@ -27,10 +65,6 @@ body {
 .panel {
   margin-bottom: 6px;
 }
-.panel-title {
-  font-size: 11px;
-  margin-bottom: 1px;
-}
 .chart-wrap {
   width: 100%;
   height: 85px;
@@ -38,48 +72,58 @@ body {
 .chart-wrap.small {
   height: 65px;
 }
+.chart-wrap.large {
+  height: 105px;
+}
 canvas {
   width: 100% !important;
   height: 100% !important;
 }
-#outer {
+#app {
   position:fixed;
   width:800px;
   padding: 10px;
-  border: 1px solid grey;
-  background-color: #f8f8f8;
+  border: 1px solid var(--color-app-border);
+  background-color: var(--color-app-bg);
 }
-#source {
+#metadata {
   position: absolute;
   top: 0px;
   right: 0px;
   padding: 4px;
 }
-@media (prefers-color-scheme: dark) {
-  body {
-    background: #222;
-  }
+#stationSearch {
+  width:150px;
+  margin-bottom:4px;
+  padding: 2px;
+  background-color: var(--color-app-bg);
+  border: 1px solid var(--color-app-border);
+  color: var(--color-text);
+}
+#stationSelector {
+  padding: 2px;
+  background-color: var(--color-app-bg);
+  border: 1px solid var(--color-app-border);
+  color: var(--color-text);
 }
 </style>
 </head>
 <body>
 
 <div class="controls">
-  <input id="stationSearch" type="text" placeholder="Stationen filtern …" style="width:150px; margin-bottom:4px;">
+  <input id="stationSearch" type="text" placeholder="Stationen filtern …">
   <select id="stationSelector" onchange="loadStation()">
     <option value="">Station wählen …</option>
   </select>
 </div>
 
-<div id="outer">
-  <div id="stationName"></div>
-  <div id="source">Quelle: <a href="https://opendata.dwd.de/">DWD MOSMIX L</a></div>
-
-  <div id="dayHeader"></div>
+<div id="app">
+  <div id="stationName">Station:</div>
+  <div id="metadata">Quelle: <a href="https://opendata.dwd.de/">DWD MOSMIX L</a></div>
 
   <div class="panel">
-    <div class="panel-title">Temperatur °C</div>
-    <div class="chart-wrap">
+    <div class="panel-title" style="margin-bottom: -20px;">Temperatur °C</div>
+    <div class="chart-wrap large">
       <canvas id="cTemp"></canvas>
     </div>
   </div>
@@ -115,11 +159,12 @@ canvas {
   </div>
 </div>
 <script>
+
 /* ===============================
-   CORS Proxy
+   URL Settings
    =============================== */
 const CORS = u => "https://corsproxy.io/?" + u;
-let allStations = [];
+
 
 function dwdUrl(id) {
   return "https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/" +
@@ -128,14 +173,13 @@ function dwdUrl(id) {
 }
 
 /* ===============================
-   XML Helper
+   Load stations
    =============================== */
+let allStations = [];
+
 const byLocal = (xml, n) =>
   [...xml.getElementsByTagName("*")].filter(e => e.localName === n);
 
-/* ===============================
-   Load
-   =============================== */
 async function loadStation() {
   const sel = document.getElementById("stationSelector");
   const id = sel.value;
@@ -219,57 +263,11 @@ document.getElementById("stationSearch").addEventListener("input", e => {
   renderStationOptions(filtered);
 });
 
-function drawWindArrows(cId, windDir, times) {
-  const canvas = document.getElementById(cId);
-  const ctx = canvas.getContext("2d");
-
-  // Größe anpassen, passend zum Chart
-  const chartCanvas = document.getElementById("cWind");
-  canvas.width = chartCanvas.width;
-  canvas.height = chartCanvas.height;
-
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  const arrowLength = 20;
-
-  const step = times.length > 48 ? Math.floor(times.length / 48) : 1;
-
-  windDir.forEach((deg,i)=>{
-    if(deg==null || i % step !== 0) return;
-
-    const px = (i/(times.length-1))*canvas.width;
-    const py = canvas.height-20;
-
-    ctx.save();
-    ctx.translate(px, py);
-    ctx.rotate((deg-180)*Math.PI/180);
-    ctx.beginPath();
-    ctx.moveTo(0, -arrowLength/2);
-    ctx.lineTo(arrowLength/2, arrowLength/2);
-    ctx.lineTo(0, arrowLength/4);
-    ctx.lineTo(-1, arrowLength/4);
-    ctx.lineTo(-1, arrowLength);
-    ctx.lineTo(2, arrowLength);
-    ctx.lineTo(2, arrowLength/4);
-    ctx.lineTo(0, arrowLength/4);
-    ctx.lineTo(-arrowLength/2, arrowLength/2);
-    ctx.closePath();
-    ctx.fillStyle = "black";
-    ctx.fill();
-    ctx.restore();
-  });
-}
-
-function gridX(times, canvasWidth) {
-  return i => (i / (times.length-1)) * canvasWidth;
-}
-
-
 loadStationList();
 
 
 /* ===============================
-   Parse + Tagesstart 00:00
+   Parse KML data
    =============================== */
 function parseKML(text) {
   const xml = new DOMParser().parseFromString(text, "text/xml");
@@ -338,137 +336,33 @@ function parseKML(text) {
 }
 
 /* ===============================
-   Grid
+   Plugins
    =============================== */
-function gridInfo(times){
-  const days=[],hours=[];
-  times.forEach((t,i)=>{
-    if(t.getHours()===0) days.push({i,t});
-    if([0,6,12,18].includes(t.getHours())) hours.push({i});
-  });
-  return {days,hours};
-}
-
 const gridPlugin={
   id:"grid",
-  afterDraw(c,a,o){
+  beforeDraw(c,a,o){
     const {ctx,chartArea:{top,bottom},scales:{x}}=c;
     ctx.save();
     o.hours.forEach(h=>{
       const px=x.getPixelForValue(h.i);
-      ctx.strokeStyle="#777";
+      ctx.strokeStyle=cssVar("--color-text-light");
       ctx.lineWidth=0.4;
       ctx.beginPath();ctx.moveTo(px,top);ctx.lineTo(px,bottom);ctx.stroke();
     });
+    ctx.restore();
+  },
+  afterDraw(c,a,o){
+    const {ctx,chartArea:{top,bottom},scales:{x}}=c;
+    ctx.save();
     o.days.forEach(d=>{
       const px=x.getPixelForValue(d.i);
-      ctx.strokeStyle="#000";
+      ctx.strokeStyle=cssVar("--color-text");
       ctx.lineWidth=1;
       ctx.beginPath();ctx.moveTo(px,top);ctx.lineTo(px,bottom);ctx.stroke();
     });
     ctx.restore();
   }
 };
-
-/* ===============================
-   Render
-   =============================== */
-let charts=[];
-function renderAll(d){
-  charts.forEach(c=>c.destroy()); charts=[];
-  const labels=d.times.map((_,i)=>i);
-  const grid=gridInfo(d.times);
-  renderHeader(d.times,grid.days);
-
-  const tMin = Math.min(...d.temp.filter(v => v != null));
-  const tempScale = {beginAtZero: false};
-  if (tMin < 5 && tMin >= 0) {tempScale.min = 0;}
-
-
-  charts.push(line("cTemp",labels,d.temp,"black",grid,null,[zeroLinePlugin],tempScale));
-  charts.push(line("cWind",labels,d.wind,"olive",grid,d.gust,[],{min: 0}));
-  charts.push(line("cRH",labels,d.rh,"teal",grid));
-  charts.push(bar("cSun",labels,d.sun,"gold",grid,{beginAtZero: false, max: 60}));
-  charts.push(
-    new Chart(document.getElementById("cRain"), {
-      type: "bar",
-      plugins: [gridPlugin],
-      data: {
-        labels,
-        datasets: [{
-          data: d.rain,
-          backgroundColor: "blue",
-          barPercentage: .8
-        }]
-      },
-      options: opts(grid, {suggestedMax: 0.5}, true, d.times) // ← X-Achse an
-    })
-  );
-  drawWindArrows("cWindArrow", d.windDirSampled, d.times);
-}
-
-function renderHeader(times,days){
-  const el=document.getElementById("dayHeader");
-  el.innerHTML="";
-  days.forEach((d,i)=>{
-    const div=document.createElement("div");
-    div.style.flex=( (i+1<days.length?days[i+1].i:times.length) - d.i );
-    div.style.textAlign="center";
-    div.textContent=d.t.toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"});
-    el.appendChild(div);
-  });
-}
-
-/* ===============================
-   Charts
-   =============================== */
-function opts(grid, yScaleOverride = null, showX = false, times = null) {
-  return{
-    responsive:true,
-    maintainAspectRatio:false,
-    plugins:{legend:{display:false},grid:{days:grid.days,hours:grid.hours}},
-    scales: {
-      x: {
-        display: showX,
-        ticks: showX && times ? {
-          autoSkip: false,
-          callback: (value) => hourLabel(times, value),
-          maxRotation: 0,
-          minRotation: 0,
-          font: { size: 10 }
-        } : undefined,
-        grid: { display: false }
-      },
-      ...(yScaleOverride ? { y: yScaleOverride} : {})
-    }
-  };
-}
-
-function hourLabel(times, index) {
-  const h = times[index].getHours();
-  return [0, 6, 12, 18].includes(h)
-    ? h.toString().padStart(2, "0")
-    : "";
-}
-
-function line(id, l, data, color, grid, extra, plugins = [], yScaleOverride = null) {
-  return new Chart(document.getElementById(id),{
-    type:"line",plugins:[gridPlugin, ...plugins],
-    data:{labels:l,datasets:[
-      {data,borderColor:color,pointRadius:0,tension:.3,borderWidth:2},
-      ...(extra?[{data:extra,borderColor:"magenta",borderDash:[4,3],pointRadius:0}]:[])
-    ]},
-    options:opts(grid, yScaleOverride)
-  });
-}
-
-function bar(id,l,data,color,grid, yScaleOverride = null){
-  return new Chart(document.getElementById(id),{
-    type:"bar",plugins:[gridPlugin],
-    data:{labels:l,datasets:[{data,backgroundColor:color,barPercentage:1}]},
-    options:opts(grid, yScaleOverride)
-  });
-}
 
 const zeroLinePlugin = {
   id: "zeroLine",
@@ -484,7 +378,7 @@ const zeroLinePlugin = {
     const ctx = chart.ctx;
 
     ctx.save();
-    ctx.strokeStyle = "#444";
+    ctx.strokeStyle = cssVar("--color-text-light");
     ctx.lineWidth = 1;
     ctx.setLineDash([6, 4]); // gestrichelt
     ctx.beginPath();
@@ -494,6 +388,229 @@ const zeroLinePlugin = {
     ctx.restore();
   }
 };
+
+const windArrowPlugin = {
+  afterDraw(chart) {
+    const dirs = chart.$windDirSampled;
+    if (!dirs) return;
+
+    const { ctx, scales: { x }, chartArea } = chart;
+    const y = chartArea.bottom + 6;
+
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "13px system-ui";
+    ctx.fillStyle = cssVar("--color-graph-winddir");
+
+    dirs.forEach((dd, i) => {
+      if (dd == null || isNaN(dd)) return;
+      const px = x.getPixelForValue(i);
+
+      ctx.save();
+      ctx.translate(px, y);
+      ctx.rotate((dd + 180) * Math.PI / 180);
+      ctx.fillText("↑", 0, 0);
+      ctx.restore();
+    });
+  }
+};
+
+
+/* ===============================
+   Render
+   =============================== */
+let charts=[];
+function renderAll(d){
+  charts.forEach(c=>c.destroy()); charts=[];
+  const labels=d.times.map((_,i)=>i);
+  const grid=gridInfo(d.times);
+
+  const tMin = Math.min(...d.temp.filter(v => v != null));
+  const tempScale = {beginAtZero: false};
+  if (tMin < 5 && tMin >= 0) {tempScale.min = 0;}
+
+  // Temp
+  charts.push(
+    new Chart(document.getElementById("cTemp"),{
+      type:"line",
+      plugins:[gridPlugin, zeroLinePlugin],
+      data:{
+        labels,
+        datasets:[{
+          data: d.temp,
+          borderColor:cssVar("--color-graph-temp"),
+          pointRadius:0,
+          borderWidth:2
+        }]
+      },
+      options:opts(grid, tempScale, false, d.times, true)
+    })
+  );
+
+  // Wind
+  const windChart = new Chart(document.getElementById("cWind"), {
+    type: "line",
+    plugins: [gridPlugin, windArrowPlugin],
+    data: {
+      labels,
+      datasets:[
+        {
+          data: d.wind,
+          borderColor:cssVar("--color-graph-wind"),
+          pointRadius:0,
+          borderWidth:2
+        },
+        {
+          data: d.gust,
+          borderColor:cssVar("--color-graph-gust"),
+          borderDash:[4,3],
+          pointRadius:0,
+          borderWidth:2
+        }
+      ]
+    },
+    options: opts(grid, {min: 0})
+  });
+  windChart.$windDirSampled = d.windDirSampled;
+  charts.push(windChart);
+
+  // Humidity
+  charts.push(
+    new Chart(document.getElementById("cRH"),{
+      type:"line",
+      plugins:[gridPlugin],
+      data:{
+        labels,
+        datasets:[{
+          data: d.rh,
+          borderColor:cssVar("--color-graph-humidity"),
+          pointRadius:0,
+          borderWidth:2
+        }]
+      },
+      options:opts(grid)
+    })
+  );
+
+  // Sun
+  charts.push(
+    new Chart(document.getElementById("cSun"), {
+      type: "bar",
+      plugins: [gridPlugin],
+      data: {
+        labels,
+        datasets: [{
+          data: d.sun,
+          backgroundColor: cssVar("--color-graph-sun"),
+          barPercentage: .8
+        }]
+      },
+      options: opts(grid, {beginAtZero: false, max: 60}) // ← X-Achse an
+    })
+  );
+
+  // Rain
+  charts.push(
+    new Chart(document.getElementById("cRain"), {
+      type: "bar",
+      plugins: [gridPlugin],
+      data: {
+        labels,
+        datasets: [{
+          data: d.rain,
+          backgroundColor: cssVar("--color-graph-rain"),
+          barPercentage: .8
+        }]
+      },
+      options: opts(grid, {suggestedMax: 0.5}, true, d.times) // ← X-Achse an
+    })
+  );
+}
+
+/* ===============================
+   Helper functions
+   =============================== */
+
+function opts(grid, y = {}, showX = false, times = null, showXTop = false) {
+  return{
+    responsive:true,
+    maintainAspectRatio:false,
+    plugins:{legend:{display:false},grid:{days:grid.days,hours:grid.hours}},
+    scales: {
+      x: {
+        display: showX,
+        ticks: showX && times ? {
+          autoSkip: false,
+          callback: (value) => hourLabel(times, value),
+          maxRotation: 0,
+          minRotation: 0,
+          font: { size: 10 },
+          color: cssVar("--color-text-light")
+        } : undefined,
+        grid: { display: false }
+      },
+      xTop: {
+        position: "top",
+        display: showXTop,
+        ticks: showXTop && times ? {
+          autoSkip: false,
+          callback: (v) => dayTicks(times)[v],
+          maxRotation: 0,
+          minRotation: 0,
+          font: { size: 12, weight: "bold" },
+          color: cssVar("--color-text"),
+          padding: 4
+        } : undefined,
+        grid: { display: false }
+      },
+      y: {
+        afterFit(scale) {
+          scale.width = 28;
+        },
+        grid: {
+          color: cssVar("--color-text-light"),
+          lineWidth: 0.1
+        },
+        ...y
+      }
+    }
+  };
+}
+
+function hourLabel(times, index) {
+  const h = times[index].getHours();
+  return [0, 6, 12, 18].includes(h)
+    ? h.toString().padStart(2, "0")
+    : "";
+}
+
+function dayTicks(times) {
+  return times.map((t, i) =>
+    t.getHours() === 12
+      ? t.toLocaleDateString("de-DE", {
+          weekday: "short",
+          day: "2-digit",
+          month: "2-digit"
+        })
+      : ""
+  );
+}
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+}
+
+function gridInfo(times){
+  const days=[],hours=[];
+  times.forEach((t,i)=>{
+    if(t.getHours()===0) days.push({i,t});
+    if([0,6,12,18].includes(t.getHours())) hours.push({i});
+  });
+  return {days,hours};
+}
 
 </script>
 
