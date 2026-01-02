@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <title>DWD MOSMIX – Kompakt</title>
 
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
 
 <style>
@@ -106,20 +105,31 @@ canvas {
   border: 1px solid var(--color-app-border);
   color: var(--color-text);
 }
+#error {
+  color: red;
+  padding: 10px;
+  margin-bottom: 20px;
+  border: 1px solid grey;
+  width:800px;
+  font-weight: bold;
+  display: none;
+}
 </style>
 </head>
 <body>
 
+<div id="error"></div>
+
 <div class="controls">
   <input id="stationSearch" type="text" placeholder="Stationen filtern …">
-  <select id="stationSelector" onchange="loadStation()">
-    <option value="">Station wählen …</option>
+  <select id="stationSelector" onchange="changeStation(this.value)">
+    <option value="">Liste wird geladen …</option>
   </select>
 </div>
 
 <div id="app">
   <div id="stationName">Station:</div>
-  <div id="metadata">Quelle: <a href="https://opendata.dwd.de/">DWD MOSMIX L</a></div>
+  <div id="metadata">Quelle: DWD MOSMIX via <a target="_blank" href="https://brightsky.dev/">brightsky.dev</a></div>
 
   <div class="panel">
     <div class="panel-title" style="margin-bottom: -20px;">Temperatur °C</div>
@@ -135,7 +145,6 @@ canvas {
       <canvas id="cWindArrow" style="position:absolute; left:0; top:0; pointer-events:none;"></canvas>
     </div>
   </div>
-
 
   <div class="panel">
     <div class="panel-title">Relative Luftfeuchte %</div>
@@ -163,13 +172,19 @@ canvas {
 /* ===============================
    URL Settings
    =============================== */
-const CORS = u => "https://corsproxy.io/?" + u;
-
-
-function dwdUrl(id) {
-  return "https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/" +
-         "single_stations/" + id +
-         "/kml/MOSMIX_L_LATEST_" + id + ".kmz";
+function brightSkyUrl(stationId) {
+  const d = new Date();
+  return `https://api.brightsky.dev/weather` +
+         `?wmo_station_id=${stationId}` +
+         `&date=${new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString()}` +
+         `&last_date=${new Date(d.getFullYear(), d.getMonth(), d.getDate()+3,23,59,59).toISOString()}`;
+}
+//Mitte Deutschland + 500km für alle Stationen
+function brightSkySourcesUrl() {
+  return "https://api.brightsky.dev/sources" +
+    "?lat=50.55718952310392" +
+    "&lon=10.28123655125358" +
+    "&max_dist=500000";
 }
 
 /* ===============================
@@ -177,66 +192,103 @@ function dwdUrl(id) {
    =============================== */
 let allStations = [];
 
-const byLocal = (xml, n) =>
-  [...xml.getElementsByTagName("*")].filter(e => e.localName === n);
-
-async function loadStation() {
-  const sel = document.getElementById("stationSelector");
-  const id = sel.value;
-  if (!id) return;
-
-  // URL‑Parameter setzen
+function changeStation(id) {
   const params = new URLSearchParams(window.location.search);
   params.set("station", id);
   history.replaceState(null, "", "?" + params.toString());
+  loadStation();
+}
 
-  const resp = await fetch(CORS(dwdUrl(id)));
-  const zip = await JSZip.loadAsync(await resp.arrayBuffer());
-  const kml = await zip.file(/\.kml$/i)[0].async("text");
+async function loadStation() {
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get("station");
+  if (!id) return;
 
-  renderAll(parseKML(kml));
+  try {
+    // Request an Bright Sky mit DWD-Stations ID
+    const resp = await fetch(brightSkyUrl(id));
+    const json = await resp.json();
 
-  // Stationsname extrahieren
-  const xml = new DOMParser().parseFromString(kml, "text/xml");
-  const nameEl = xml.getElementsByTagNameNS("*", "description")[0];
-  const stationName = nameEl ? nameEl.textContent : "Station " + id;
+    if (!json.weather || json.weather.length === 0) {
+      throw new Error("Keine Daten vom Bright Sky API erhalten");
+    }
 
-  document.getElementById("stationName").textContent = "Station: " + stationName;
+    const rows = json.weather;
+    parsed = {
+      times: rows.map(r => new Date(r.timestamp)),
+      temp: rows.map(r => r.temperature),
+      wind: rows.map(r => r.wind_speed),
+      gust: rows.map(r => r.wind_gust_speed),
+      rh: rows.map(r => r.relative_humidity),
+      sun: rows.map(r => r.sunshine),
+      rain: rows.map(r => r.precipitation),
+      windDirSampled: rows.map((r, i) => i % 2 === 0 ? r.wind_direction : null)
+    };
+
+    renderAll(parsed);
+
+    // Display station name (optional: aus json.sources)
+    const stationName = json.sources?.[0]?.station_name || id;
+    document.getElementById("stationName").textContent =
+      "Station: " + stationName;
+
+  } catch (err) {
+    display_error("Fehler beim Laden der Bright Sky Daten: " + err.message);
+  }
 }
 
 async function loadStationList() {
-  const url = "https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_stationskatalog.cfg?view=nasPublication&nn=16102";
-  const resp = await fetch(CORS(url));
-  const text = await resp.text();
+  let json;
 
-  const sel = document.getElementById("stationSelector");
+  try {
+    const resp = await fetch(brightSkySourcesUrl());
+    json = await resp.json();
+  } catch {
+    display_error("Bright Sky Stationsliste konnte nicht geladen werden.");
+    return;
+  }
 
-  const stations = [];
+  if (!Array.isArray(json.sources)) {
+    display_error("Ungültige Antwort vom Bright Sky Sources Endpoint.");
+    return;
+  }
 
-  text.split("\n").forEach(line => {
-    const cols = line.trim().split(/\s+/, 3);
-    if (cols.length > 2) {
-      stations.push({
-        id: cols[0],
-        name: cols[2]
+  const map = new Map();
+  json.sources
+    .filter(s => s.observation_type === "forecast")
+    .forEach(s => {
+    const key =
+      s.wmo_station_id ??
+      s.dwd_station_id ??
+      s.id;
+
+    if (!key) return;
+
+    if (!map.has(key)) {
+      map.set(key, {
+        id: s.wmo_station_id || s.dwd_station_id || s.id,
+        name: s.station_name || `Station ${key}`
       });
     }
   });
 
-  // alphabetisch nach Stationsname sortieren
-  stations.sort((a, b) =>
+  // Sort
+  allStations = [...map.values()].sort((a, b) =>
     a.name.localeCompare(b.name, "de", { sensitivity: "base" })
   );
 
-  allStations = stations;   // nach dem Sortieren
+  if (!allStations.length) {
+    display_error("Keine Stationen aus Bright Sky Sources erhalten.");
+    return;
+  }
+
   renderStationOptions(allStations);
 
-  // URL-Parameter auslesen
+  // Set to station provided by url param
   const params = new URLSearchParams(window.location.search);
   const preset = params.get("station");
-  if (preset) {
-    sel.value = preset;
-    loadStation();
+  if (preset && allStations.some(s => s.id === preset)) {
+    document.getElementById("stationSelector").value = preset;
   }
 }
 
@@ -252,6 +304,7 @@ function renderStationOptions(list) {
   });
 }
 
+// Station filter
 document.getElementById("stationSearch").addEventListener("input", e => {
   const q = e.target.value.trim().toLowerCase();
 
@@ -263,80 +316,12 @@ document.getElementById("stationSearch").addEventListener("input", e => {
   renderStationOptions(filtered);
 });
 
+loadStation();
 loadStationList();
 
 
 /* ===============================
-   Parse KML data
-   =============================== */
-function parseKML(text) {
-  const xml = new DOMParser().parseFromString(text, "text/xml");
-
-  // vorhandene Times
-  let timesRaw = byLocal(xml, "TimeStep").map(n => new Date(n.textContent));
-
-  // Forecast-Daten
-  const raw = {};
-  byLocal(xml, "Forecast").forEach(f => {
-    const n = f.getAttribute("dwd:elementName") || f.getAttribute("elementName");
-    const v = [...f.children].find(c => c.localName === "value");
-    if (n && v)
-      raw[n] = v.textContent.trim().split(/\s+/).map(x => x === "-" ? null : +x);
-  });
-
-  // Heute 00:00 bis 4 Tage später, stündlich
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const end = new Date(start);
-  end.setDate(end.getDate() + 4);
-
-  const times = [];
-  for (let t = new Date(start); t < end; t.setHours(t.getHours() + 1)) {
-    times.push(new Date(t));
-  }
-
-  const sel = arr => times.map(t => {
-    const idx = timesRaw.findIndex(tr => tr.getTime() === t.getTime());
-    return idx >= 0 ? arr[idx] : null;
-  });
-
-  const temp = sel(raw.TTT).map(v => v==null?null:v-273.15);
-  const dew  = sel(raw.Td).map(v => v==null?null:v-273.15);
-  const sun  = sel(raw.SunD1).map(v => v==null?null:v/60);
-  const windDir = sel(raw.DD);
-  const rain = sel(raw.RR1c);
-  const wind = sel(raw.FF).map(v => v==null?null:v * 3.6);
-  const gust = sel(raw.FX1).map(v => v==null?null:v * 3.6);
-
-  // Relative Luftfeuchte
-  const rh = temp.map((t,i)=>{
-    const d=dew[i];
-    if(t==null||d==null)return null;
-    const a=17.62,b=243.12;
-    return Math.max(0,Math.min(100,
-      100*Math.exp(a*d/(b+d))/Math.exp(a*t/(b+t))
-    ));
-  });
-
-  // Windrichtung
-  const arrowsPerDay = 12; // 24h / 2h = 12
-  const step = Math.floor(times.length / (4*arrowsPerDay)); // 4 Tage
-  const windDirSampled = times.map((_, i) => (i % step === 0 ? windDir[i] : null));
-
-  return {
-    times,
-    temp,
-    wind,
-    gust,
-    rh,
-    sun,
-    rain,
-    windDirSampled
-  };
-}
-
-/* ===============================
-   Plugins
+   Chart.js Plugins
    =============================== */
 const gridPlugin={
   id:"grid",
@@ -610,6 +595,12 @@ function gridInfo(times){
     if([0,6,12,18].includes(t.getHours())) hours.push({i});
   });
   return {days,hours};
+}
+
+function display_error(message) {
+  let e = document.getElementById("error");
+  e.textContent = message;
+  e.style.display = "block";
 }
 
 </script>
