@@ -14,7 +14,11 @@ Nach auswahl der Station wird die ID an die URL angehängt, damit kann diese auc
 
 So sieht derzeit die App aus:
 
-<img width="852" height="614" alt="grafik" src="https://github.com/user-attachments/assets/5fe80ecd-a041-4fae-bd19-2f2d7d849596" />
+<img width="868" height="614" alt="grafik" src="https://github.com/user-attachments/assets/7d017e5c-0ab4-43c7-8757-a90fb4e2c987" />
+
+Außerdem existiert ein Darkmode:
+
+<img width="859" height="606" alt="grafik" src="https://github.com/user-attachments/assets/a7831a0c-63a0-4983-a244-84a99b675aea" />
 
 
 ## Informationen
