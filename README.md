@@ -19,8 +19,3 @@ So sieht derzeit die App aus:
 Außerdem existiert ein Darkmode:
 
 <img width="859" height="606" alt="grafik" src="https://github.com/user-attachments/assets/a7831a0c-63a0-4983-a244-84a99b675aea" />
-
-
-## Informationen
-
-Da die API Endpoints von DWD keine CORS Header setzen, müssen wir die Inhalte über einen CORS-Proxy laden. Falls dieser irgendwann nicht mehr verfügbar ist oder funktioniert, klappt die ganze App nicht. Außerdem werden JS Bibiliotheken von cdn.jsdelivr.net geladen. 
