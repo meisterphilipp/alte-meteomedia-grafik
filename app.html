@@ -8,6 +8,8 @@
 
 <style>
 :root {
+  --font-size: 12px;
+  --font-size-small: 10px;
   --color-bg: #ffffff;
   --color-text: #111111;
   --color-text-light: #666666;
@@ -23,28 +25,27 @@
   --color-graph-sun: #ffd700;
   --color-graph-rain: #0000ff;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #0f1115;
-    --color-text: #a9a9a9;
-    --color-text-light: #666666;
-    --color-link: #6d48aa;
-    --color-link-hover: #a487d2;
-    --color-app-bg: #262626;
-    --color-app-border: #828282;
-    --color-graph-temp: #b0b0b0;
-    --color-graph-wind: #808000;
-    --color-graph-gust: #ff00ff;
-    --color-graph-winddir: #777777;
-    --color-graph-humidity: #008080;
-    --color-graph-sun: #c9ab00;
-    --color-graph-rain: #0000c5;
-  }
+:root[data-theme="dark"] {
+  --color-bg: #0f1115;
+  --color-text: #a9a9a9;
+  --color-text-light: #666666;
+  --color-link: #6d48aa;
+  --color-link-hover: #a487d2;
+  --color-app-bg: #262626;
+  --color-app-border: #828282;
+  --color-graph-temp: #b0b0b0;
+  --color-graph-wind: #808000;
+  --color-graph-gust: #ff00ff;
+  --color-graph-winddir: #777777;
+  --color-graph-humidity: #008080;
+  --color-graph-sun: #c9ab00;
+  --color-graph-rain: #0000c5;
 }
+
 body {
   font-family: Arial, sans-serif;
   margin: 12px;
-  font-size: 12px;
+  font-size: var(--font-size);
   background-color: var(--color-bg);
   color: var(--color-text);
 }
@@ -56,6 +57,8 @@ a:hover {
 }
 .controls {
   margin-bottom: 6px;
+  width:820px;
+  position: relative;
 }
 #stationName {
   font-weight:bold;
@@ -104,6 +107,19 @@ canvas {
   background-color: var(--color-app-bg);
   border: 1px solid var(--color-app-border);
   color: var(--color-text);
+  min-width: 300px;
+}
+#darkmode {
+  display: inline;
+  position:absolute;
+  right: 0px;
+}
+#darkmodeSelector {
+  padding: 2px;
+  background-color: var(--color-app-bg);
+  border: 1px solid var(--color-app-border);
+  color: var(--color-text);
+  font-size: var(--font-size);
 }
 #error {
   color: red;
@@ -125,6 +141,14 @@ canvas {
   <select id="stationSelector" onchange="changeStation(this.value)">
     <option value="">Liste wird geladen …</option>
   </select>
+  <div id="darkmode">
+    Darkmode:
+    <select id="darkmodeSelector" onchange="changeDarkmode(this.value)">
+      <option value="2">Systemeinstellung</option>
+      <option value="1">An</option>
+      <option value="0">Aus</option>
+    </select>
+  </div>
 </div>
 
 <div id="app">
@@ -304,7 +328,9 @@ function renderStationOptions(list) {
   });
 }
 
-// Station filter
+/* ===============================
+   Init
+   =============================== */
 document.getElementById("stationSearch").addEventListener("input", e => {
   const q = e.target.value.trim().toLowerCase();
 
@@ -315,10 +341,9 @@ document.getElementById("stationSearch").addEventListener("input", e => {
 
   renderStationOptions(filtered);
 });
-
 loadStation();
 loadStationList();
-
+setDarkmodeFromStorage();
 
 /* ===============================
    Chart.js Plugins
@@ -530,7 +555,7 @@ function opts(grid, y = {}, showX = false, times = null, showXTop = false) {
           callback: (value) => hourLabel(times, value),
           maxRotation: 0,
           minRotation: 0,
-          font: { size: 10 },
+          font: { size: cssVar("--font-size-small") },
           color: cssVar("--color-text-light")
         } : undefined,
         grid: { display: false }
@@ -543,7 +568,7 @@ function opts(grid, y = {}, showX = false, times = null, showXTop = false) {
           callback: (v) => dayTicks(times)[v],
           maxRotation: 0,
           minRotation: 0,
-          font: { size: 12, weight: "bold" },
+          font: { size: cssVar("--font-size"), weight: "bold" },
           color: cssVar("--color-text"),
           padding: 4
         } : undefined,
@@ -603,6 +628,29 @@ function display_error(message) {
   e.style.display = "block";
 }
 
+function changeDarkmode(value) {
+  localStorage.setItem("darkmode", value);
+  window.location = '';
+}
+
+function setDarkmodeFromStorage() {
+  const mode = localStorage.getItem("darkmode") ?? 2;
+  const root = document.documentElement;
+
+  document.getElementById("darkmodeSelector").value = mode;
+
+  if (mode === "1") {
+    root.dataset.theme = "dark";
+  } else if (mode === "0") {
+    delete root.dataset.theme;
+  } else {
+    if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      root.dataset.theme = "dark";
+    } else {
+      delete root.dataset.theme;
+    }
+  }
+}
 </script>
 
 </body>
