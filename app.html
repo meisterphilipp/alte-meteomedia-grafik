@@ -246,10 +246,17 @@ async function loadStation() {
       temp: rows.map(r => r.temperature),
       wind: rows.map(r => r.wind_speed),
       gust: rows.map(r => r.wind_gust_speed),
-      rh: rows.map(r => r.relative_humidity),
       sun: rows.map(r => r.sunshine),
       rain: rows.map(r => r.precipitation),
-      windDirSampled: rows.map((r, i) => i % 2 === 0 ? r.wind_direction : null)
+      windDirSampled: rows.map((r, i) => i % 2 === 0 ? r.wind_direction : null),
+      rh: rows.map(r => {
+        const T = r.temperature;
+        const Td = r.dew_point;
+        if (T == null || Td == null) return null;
+        const eT = 6.112 * Math.exp(17.67 * T / (T + 243.5));
+        const eTd = 6.112 * Math.exp(17.67 * Td / (Td + 243.5));
+        return Math.min(100, Math.max(0, (eTd / eT) * 100));
+      })
     };
 
     renderAll(parsed);
