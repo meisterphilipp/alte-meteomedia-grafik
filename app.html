@@ -6,6 +6,8 @@
 <title>DWD MOSMIX – Kompakt</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+
 
 <style>
 :root {
@@ -204,7 +206,7 @@ function brightSkyUrl(stationId) {
   return `https://api.brightsky.dev/weather` +
          `?wmo_station_id=${stationId}` +
          `&date=${new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString()}` +
-         `&last_date=${new Date(d.getFullYear(), d.getMonth(), d.getDate()+3,23,59,59).toISOString()}`;
+         `&last_date=${new Date(d.getFullYear(), d.getMonth(), d.getDate()+4,23,59,59).toISOString()}`;
 }
 //Mitte Deutschland + 500km für alle Stationen
 function brightSkySourcesUrl() {
@@ -364,7 +366,8 @@ const gridPlugin={
     const {ctx,chartArea:{top,bottom},scales:{x}}=c;
     ctx.save();
     o.hours.forEach(h=>{
-      const px=x.getPixelForValue(h.i);
+      const px = x.getPixelForValue(h.t);
+
       ctx.strokeStyle=cssVar("--color-text-light");
       ctx.lineWidth=0.4;
       ctx.beginPath();ctx.moveTo(px,top);ctx.lineTo(px,bottom);ctx.stroke();
@@ -375,7 +378,8 @@ const gridPlugin={
     const {ctx,chartArea:{top,bottom},scales:{x}}=c;
     ctx.save();
     o.days.forEach(d=>{
-      const px=x.getPixelForValue(d.i);
+      const px = x.getPixelForValue(d.t);
+
       ctx.strokeStyle=cssVar("--color-text");
       ctx.lineWidth=1;
       ctx.beginPath();ctx.moveTo(px,top);ctx.lineTo(px,bottom);ctx.stroke();
@@ -425,7 +429,10 @@ const windArrowPlugin = {
 
     dirs.forEach((dd, i) => {
       if (dd == null || isNaN(dd)) return;
-      const px = x.getPixelForValue(i);
+      const t = chart.$times?.[i];
+      if (!(t instanceof Date)) return;
+
+      const px = x.getPixelForValue(t);
 
       ctx.save();
       ctx.translate(px, y);
@@ -450,15 +457,16 @@ function renderAll(d){
   const tempScale = {beginAtZero: false};
   if (tMin < 5 && tMin >= 0) {tempScale.min = 0;}
 
+  console.log(d);
+
   // Temp
   charts.push(
     new Chart(document.getElementById("cTemp"),{
       type:"line",
       plugins:[gridPlugin, zeroLinePlugin],
       data:{
-        labels,
         datasets:[{
-          data: d.temp,
+          data: xy(d.times, d.temp),
           borderColor:cssVar("--color-graph-temp"),
           pointRadius:0,
           borderWidth:2
@@ -473,16 +481,15 @@ function renderAll(d){
     type: "line",
     plugins: [gridPlugin, windArrowPlugin],
     data: {
-      labels,
       datasets:[
         {
-          data: d.wind,
+          data: xy(d.times, d.wind),
           borderColor:cssVar("--color-graph-wind"),
           pointRadius:0,
           borderWidth:2
         },
         {
-          data: d.gust,
+          data: xy(d.times, d.gust),
           borderColor:cssVar("--color-graph-gust"),
           borderDash:[4,3],
           pointRadius:0,
@@ -501,9 +508,8 @@ function renderAll(d){
       type:"line",
       plugins:[gridPlugin],
       data:{
-        labels,
         datasets:[{
-          data: d.rh,
+          data: xy(d.times, d.rh),
           borderColor:cssVar("--color-graph-humidity"),
           pointRadius:0,
           borderWidth:2
@@ -518,10 +524,10 @@ function renderAll(d){
     new Chart(document.getElementById("cSun"), {
       type: "bar",
       plugins: [gridPlugin],
+      parsing: false,
       data: {
-        labels,
         datasets: [{
-          data: d.sun,
+          data: xy(d.times, d.sun),
           backgroundColor: cssVar("--color-graph-sun"),
           barPercentage: .8
         }]
@@ -535,10 +541,10 @@ function renderAll(d){
     new Chart(document.getElementById("cRain"), {
       type: "bar",
       plugins: [gridPlugin],
+      parsing: false,
       data: {
-        labels,
         datasets: [{
-          data: d.rain,
+          data: xy(d.times, d.rain),
           backgroundColor: cssVar("--color-graph-rain"),
           barPercentage: .8
         }]
@@ -551,18 +557,37 @@ function renderAll(d){
 /* ===============================
    Helper functions
    =============================== */
-
 function opts(grid, y = {}, showX = false, times = null, showXTop = false) {
+  const xMin = todayMidnight();
+  console.log(xMin);
+  const xMax = new Date(xMin);
+  xMax.setDate(xMax.getDate() + 3);
+  xMax.setHours(23, 59, 59, 999);
   return{
     responsive:true,
     maintainAspectRatio:false,
     plugins:{legend:{display:false},grid:{days:grid.days,hours:grid.hours}},
     scales: {
       x: {
+        type: "time",
+        min: xMin,
+        suggestedMin: xMin,
+        max: xMax,
+        time: {
+          unit: "hour",
+          stepSize: 1
+        },
         display: showX,
         ticks: showX && times ? {
           autoSkip: false,
-          callback: (value) => hourLabel(times, value),
+          source: "data",
+          callback: (value) => {
+            const d = new Date(value);
+            const h = d.getHours();
+            return [0, 6, 12, 18].includes(h)
+              ? d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+              : "";
+          },
           maxRotation: 0,
           minRotation: 0,
           font: { size: cssVar("--font-size-small") },
@@ -571,16 +596,30 @@ function opts(grid, y = {}, showX = false, times = null, showXTop = false) {
         grid: { display: false }
       },
       xTop: {
+        type: "time",
+        min: xMin,
+        suggestedMin: xMin,
+        max: xMax,
         position: "top",
+        time: {
+          unit: "hour",
+          stepSize: 24
+        },
         display: showXTop,
         ticks: showXTop && times ? {
-          autoSkip: false,
-          callback: (v) => dayTicks(times)[v],
+          autoSkip: true,
+          callback: (value) => {
+            const d = new Date(value);
+            const h = d.getHours();
+            console.log(d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(',',''));
+            return (h == 13)
+              ? d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(',','')
+              : "";
+          },
           maxRotation: 0,
           minRotation: 0,
-          font: { size: cssVar("--font-size"), weight: "bold" },
-          color: cssVar("--color-text"),
-          padding: 4
+          font: { size: cssVar("--font-size-small"), weight: 'bold' },
+          color: cssVar("--color-text")
         } : undefined,
         grid: { display: false }
       },
@@ -598,38 +637,22 @@ function opts(grid, y = {}, showX = false, times = null, showXTop = false) {
   };
 }
 
-function hourLabel(times, index) {
-  const h = times[index].getHours();
-  return [0, 6, 12, 18].includes(h)
-    ? h.toString().padStart(2, "0")
-    : "";
-}
-
-function dayTicks(times) {
-  return times.map((t, i) =>
-    t.getHours() === 12
-      ? t.toLocaleDateString("de-DE", {
-          weekday: "short",
-          day: "2-digit",
-          month: "2-digit"
-        })
-      : ""
-  );
-}
-
 function cssVar(name) {
   return getComputedStyle(document.documentElement)
     .getPropertyValue(name)
     .trim();
 }
 
-function gridInfo(times){
-  const days=[],hours=[];
-  times.forEach((t,i)=>{
-    if(t.getHours()===0) days.push({i,t});
-    if([0,6,12,18].includes(t.getHours())) hours.push({i});
+function gridInfo(times) {
+  const days = [], hours = [];
+  times.forEach(t => {
+    if (!(t instanceof Date) || isNaN(t)) return;
+
+    const h = t.getHours();
+    if (h === 0) days.push({ t });
+    if ([0, 6, 12, 18].includes(h)) hours.push({ t });
   });
-  return {days,hours};
+  return { days, hours };
 }
 
 function display_error(message) {
@@ -660,6 +683,22 @@ function setDarkmodeFromStorage() {
       delete root.dataset.theme;
     }
   }
+}
+
+function xy(times, values) {
+  return times.map((t, i) =>
+    values[i] == null ? null : { x: t, y: values[i] }
+  ).filter(Boolean);
+}
+
+function todayMidnight() {
+  const now = new Date();
+  return new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    1, 0, 0, 0
+  );
 }
 </script>
 
