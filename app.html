@@ -16,6 +16,7 @@
   --color-text-light: #666666;
   --color-link: #906fc4;
   --color-link-hover: #68479d;
+  --color-input-bg: #f8f8f8;
   --color-app-bg: #f8f8f8;
   --color-app-border: #dddddd;
   --color-graph-temp: #000;
@@ -32,6 +33,7 @@
   --color-text-light: #666666;
   --color-link: #6d48aa;
   --color-link-hover: #a487d2;
+  --color-input-bg: #262626;
   --color-app-bg: #262626;
   --color-app-border: #828282;
   --color-graph-temp: #b0b0b0;
@@ -41,6 +43,20 @@
   --color-graph-humidity: #008080;
   --color-graph-sun: #c9ab00;
   --color-graph-rain: #0000c5;
+}
+:root[data-theme="meteomedia"] {
+  --color-app-bg: #77acd7;
+  --color-canvas-bg: #e3e3e3;
+  #meteomedia-legacy {
+    display: block !important;
+    font-size: 40px;
+    color: #4582b4;
+    font-family:'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+    font-weight: bold;
+  }
+  #app {
+    padding-top: 20px;
+  }
 }
 html {
   -webkit-text-size-adjust: 100%;
@@ -83,6 +99,7 @@ a:hover {
 canvas {
   width: 100% !important;
   height: 100% !important;
+  background-color: var(--color-canvas-bg, --color-app-bg);
 }
 #app {
   position:relative;
@@ -101,13 +118,13 @@ canvas {
   width:150px;
   margin-bottom:4px;
   padding: 2px;
-  background-color: var(--color-app-bg);
+  background-color: var(--color-input-bg);
   border: 1px solid var(--color-app-border);
   color: var(--color-text);
 }
 #stationSelector {
   padding: 2px;
-  background-color: var(--color-app-bg);
+  background-color: var(--color-input-bg);
   border: 1px solid var(--color-app-border);
   color: var(--color-text);
   min-width: 300px;
@@ -119,7 +136,7 @@ canvas {
 }
 #darkmodeSelector {
   padding: 2px;
-  background-color: var(--color-app-bg);
+  background-color: var(--color-input-bg);
   border: 1px solid var(--color-app-border);
   color: var(--color-text);
   font-size: var(--font-size);
@@ -145,11 +162,12 @@ canvas {
     <option value="">Liste wird geladen …</option>
   </select>
   <div id="darkmode">
-    Darkmode:
+    Farbschema:
     <select id="darkmodeSelector" onchange="changeDarkmode(this.value)">
-      <option value="2">Systemeinstellung</option>
-      <option value="1">An</option>
-      <option value="0">Aus</option>
+      <option value="0">Standard</option>
+      <option value="1">Darkmode An</option>
+      <option value="2">Darkmode Systemeinstellung</option>
+      <option value="3">Meteomedia Legacy</option>
     </select>
   </div>
 </div>
@@ -169,7 +187,6 @@ canvas {
     <div class="panel-title">Wind / Böen km/h</div>
     <div class="chart-wrap" style="position: relative;">
       <canvas id="cWind"></canvas>
-      <canvas id="cWindArrow" style="position:absolute; left:0; top:0; pointer-events:none;"></canvas>
     </div>
   </div>
 
@@ -193,6 +210,7 @@ canvas {
       <canvas id="cRain"></canvas>
     </div>
   </div>
+  <div id="meteomedia-legacy" style="display:none;">wetterstationen.meteomedia.de</div>
 </div>
 <script>
 
@@ -651,6 +669,8 @@ function setDarkmodeFromStorage() {
 
   if (mode === "1") {
     root.dataset.theme = "dark";
+  } else if (mode === "3") {
+    root.dataset.theme = "meteomedia";
   } else if (mode === "0") {
     delete root.dataset.theme;
   } else {
